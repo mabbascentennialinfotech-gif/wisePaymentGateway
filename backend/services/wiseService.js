@@ -58,124 +58,61 @@ class WiseService {
     return balances;
   }
 
-  async getBalanceForCurrency(currency) {
-    const balances = await this.getBalances();
-    const balance = balances.find(b => b.currency === currency);
-    return balance || { currency, amount: 0, reservedAmount: 0 };
-  }
-
-  async hasEnoughBalance(currency, amount) {
-    const balance = await this.getBalanceForCurrency(currency);
-    return balance.amount >= amount;
-  }
-
-  async createQuote(sourceCurrency, targetCurrency, amount, isSourceAmount = true) {
+  async createQuote(sourceCurrency, targetCurrency, amount) {
     const profileId = await this.getProfileId();
-
-    const payload = {
-      profileId,
-      sourceCurrency,
-      targetCurrency,
-      payOut: 'BALANCE'
-    };
-
-    if (isSourceAmount) {
-      payload.sourceAmount = amount;
-    } else {
-      payload.targetAmount = amount;
-    }
-
     console.log('📡 Creating quote...');
-    const quote = await this._request('post', '/v2/quotes', payload);
+    const quote = await this._request('post', '/v2/quotes', {
+      profileId, sourceCurrency, targetCurrency, sourceAmount: amount, payOut: 'BALANCE'
+    });
     console.log('✅ Quote created:', quote.id);
-
     return quote;
   }
 
-  async createTransfer(recipientId, quoteId, reference) {
-    const profileId = await this.getProfileId();
-
-    const payload = {
-      profileId,
-      quoteId,
-      targetAccountId: recipientId,
-      details: {
-        reference: reference || `Transfer ${Date.now()}`
-      }
-    };
-
-    console.log('📡 Creating transfer...');
-    const transfer = await this._request('post', '/v1/transfers', payload);
-    console.log('✅ Transfer created:', transfer.id);
-
-    return transfer;
-  }
-
-  async fundTransfer(transferId) {
-    const profileId = await this.getProfileId();
-
-    const payload = {
-      profileId,
-      transferId,
-      type: 'BALANCE'
-    };
-
-    console.log('📡 Funding transfer...');
-    const funding = await this._request('post', '/v3/transfers/transfer-fund', payload);
-    console.log('✅ Transfer funded:', funding.status);
-
-    return funding;
-  }
-
-  async getTransferStatus(transferId) {
-    const profileId = await this.getProfileId();
-
-    const transfer = await this._request('get', `/v1/transfers/${transferId}`);
-    console.log('📡 Transfer status:', transfer.status);
-
-    return transfer;
-  }
-
-  async getExchangeRates(sourceCurrency, targetCurrency) {
-    const rates = await this._request('get', `/v1/rates?source=${sourceCurrency}&target=${targetCurrency}`);
-    return rates;
-  }
-
-  // ✅ THIS IS THE METHOD YOUR FRONTEND IS CALLING
+  // ✅ CORRECTED METHOD - Uses the right endpoint from Wise docs
   async getBankDetails(currency = 'USD') {
     const profileId = await this.getProfileId();
     console.log('📡 Fetching bank details for currency:', currency);
 
     try {
-      // Try to get real account details from Wise
-      const accounts = await this._request('get', `/v1/borderless-accounts?profileId=${profileId}`);
+      // Correct endpoint from Wise documentation [citation:3]
+      const accountDetails = await this._request('get', `/v1/profiles/${profileId}/account-details`);
+      console.log('✅ Account details response received');
 
-      if (accounts && accounts.length > 0) {
-        const account = accounts[0];
+      const details = accountDetails.find(acc => acc.currency === currency);
+
+      if (details) {
         return {
-          currency: currency,
-          bankName: account.bankName || 'Wise',
-          accountNumber: account.accountNumber || '12345678',
-          sortCode: account.sortCode || '04-00-04',
-          iban: account.iban || 'GB00WISE1234567890',
-          swift: account.swiftCode || 'WISEGB2L',
+          currency: details.currency,
+          bankName: details.bankName || 'Wise',
+          accountNumber: details.accountNumber || details.details?.accountNumber,
+          sortCode: details.sortCode || details.details?.sortCode,
+          iban: details.iban || details.details?.iban,
+          swift: details.swiftCode || details.details?.swift,
           reference: 'USE_YOUR_REFERENCE_CODE'
         };
       }
-    } catch (error) {
-      console.log('Could not fetch real account details, using mock data:', error.message);
-    }
 
-    // Return mock data for sandbox/testing
-    return {
-      currency: currency,
-      bankName: 'Wise (Sandbox)',
-      accountNumber: '12345678',
-      sortCode: '04-00-04',
-      iban: `GB${Math.floor(Math.random() * 100000000000000)}`,
-      swift: 'WISESANDBOX',
-      reference: 'USE_YOUR_REFERENCE_CODE'
-    };
+      return {
+        currency: currency,
+        bankName: 'Wise',
+        accountNumber: 'Generate bank details in Wise dashboard',
+        sortCode: 'Request account details first',
+        iban: 'Need to order bank details',
+        swift: 'Contact support',
+        reference: 'USE_YOUR_REFERENCE_CODE'
+      };
+    } catch (error) {
+      console.error('Error fetching bank details:', error.message);
+      return {
+        currency: currency,
+        bankName: 'Wise (Error)',
+        accountNumber: 'Check Wise dashboard',
+        sortCode: 'Contact support',
+        iban: 'Need to set up account',
+        swift: 'N/A',
+        reference: 'USE_YOUR_REFERENCE_CODE'
+      };
+    }
   }
 }
 
